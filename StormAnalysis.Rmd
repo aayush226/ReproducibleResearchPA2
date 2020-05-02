@@ -1,0 +1,197 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Reproducible Research PA 2-Coursera
+## Impact of major weather events in the United States between 1950 and 2011 
+
+Aayush Shah
+
+## **Synopsis**
+
+The goal of this analysis was to find the impact of major weather events on population health and economy in the United States from 1950 to 2011.This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.From the database, we find that tornados are most harmful to population health, while flood, drought, and hurricane/typhoon have the greatest economic impacts.
+
+## **Data Processing**
+
+The data for this assignment come in the form of a comma-separated-value file compressed via the bzip2 algorithm to reduce its size. You can download the file here: [Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2). Or run the following code in Rstudio which downloads the data and loads it into a variable called _stormdata_.
+
+```{r echo=TRUE,cache=TRUE}
+filename <- "repdata_data_StormData.csv.bz2"
+if (!file.exists(filename)){
+  url<-"https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+  download.file(url, filename, method="curl")
+}  
+stormdata<-read.csv("repdata_data_StormData.csv.bz2")
+```
+
+## **Loading the Libraries**
+
+```{r echo=TRUE}
+library(dplyr)
+library(ggplot2)
+```
+
+## **Addressing the question: Across the United States, which types of events are most harmful with respect to population health?**
+
+To answer this question, I first created 2 subsets of _stormdata_, called _injuries_ and _fatality_.
+
+```{r echo=TRUE,cache=TRUE}
+injuries<-summarise(group_by(stormdata,EVTYPE,INJURIES))
+fatality<-summarise(group_by(stormdata,EVTYPE,FATALITIES))
+```
+
+Then I selected only those entries from _injuries_ and _fatality_ which were not zero.
+
+```{r echo=TRUE,cache=TRUE}
+fatality<-fatality[fatality$FATALITIES>0,]
+injuries<-injuries[injuries$INJURIES>0,]
+```
+
+Now, I grouped the entries with same _EVNAME_ in _injuries_ and _fatality_ and then added their values to create one single entry.
+
+```{r echo=TRUE,cache=TRUE}
+fatality<-summarise(group_by(fatality,EVTYPE),FATALITIES=sum(FATALITIES))
+injuries<-summarise(group_by(injuries,EVTYPE),INJURIES=sum(INJURIES))
+```
+
+So for example, multiple entries of _tornado_ were collapsed to a single entry with total of all entries
+
+Then I sorted _injuries_ and _fatality_ datasets in descending order
+
+```{r echo=TRUE,cache=TRUE}
+injuries<-injuries[order(injuries$INJURIES,decreasing = TRUE),]
+fatality<-fatality[order(fatality$FATALITIES,decreasing = TRUE),]
+```
+
+I viewed the top weather events which caused the maximum damage to population health.
+
+```{r echo=TRUE,cache=TRUE}
+head(injuries)
+head(fatality)
+```
+
+
+I merged the data sets _injuries_ and _fatality_ into a new dataset called _combineddata_ and then added a new column to _combineddata_ called _total_ which simply adds the injuries and fatality values of the two data sets, _injuries_ and _fatality_.Finally I sorted the _combineddata_ according to its _total_ values in descending order.
+
+```{r echo=TRUE,cache=TRUE}
+combineddata<-merge(injuries,fatality,by="EVTYPE")
+combineddata$total<- combineddata$INJURIES+combineddata$FATALITIES
+combineddata<-combineddata[order(combineddata$total,decreasing = TRUE),]
+```
+
+As can be seen below,**_tornados_** have caused the most damage to human health from 1950 to 2011. 
+
+```{r echo=TRUE,cache=TRUE}
+head(combineddata)
+```
+
+
+## **Addressing the question: Across the United States, which types of events have the greatest economic consequences?**
+  
+To answer this question, I created a subset of **_stormdata_** called **_a_** which extracted only columns _EVTYPE_, _PROPDMG_, _PROPDMGEXP_, _CROPDMG_ and _CROPDMGEXP_ from _stormdata_.
+Then I created **_a1_** which extracted entries of **_a_** whose _PROPDMGEXP_ and _CROPDMGEXP_ values were one of the following: "K", "M", "B", ""(BLANK) corresponding to exponents: 1e+03, 1e+06, 1e+09 and 1 respectively
+
+```{r echo=FALSE,cache=TRUE}
+a<-stormdata[,c(8,25,26,27,28)]
+head(a)
+print("Dimensions of a are:")
+dim(a)
+a1<-a[a$PROPDMGEXP %in% c("", "K", "M", "B") & a$CROPDMGEXP %in% c("", "K", "M", "B"), ] 
+head(a1)
+print("Dimensions of a1 are:")
+dim(a1)
+```
+
+Then I converted _PROPDMGEXP_ and _CROPDMGEXP_ variables to their respective numeric values.
+
+```{r echo=TRUE,cache=TRUE}
+propexp<-vector()
+for ( i in 1:nrow(a1)){
+  if (as.character(a1[i,3])=="K"){
+    propexp[i]<-1000
+  }
+  if (as.character(a1[i,3])=="B"){
+    propexp[i]<-1e+09
+  }
+  if (as.character(a1[i,3])=="M"){
+    propexp[i]<-1e+06
+  }
+  if (as.character(a1[i,3])==""){
+    propexp[i]<-1
+  }
+}
+cropexp<-vector()
+for ( i in 1:nrow(a1)){
+  if (as.character(a1[i,5])=="K"){
+    cropexp[i]<-1000
+  }
+  if (as.character(a1[i,5])=="B"){
+    cropexp[i]<-1e+09
+  }
+  if (as.character(a1[i,5])=="M"){
+    cropexp[i]<-1e+06
+  }
+  if (as.character(a1[i,5])==""){
+    cropexp[i]<-1
+  }
+}
+```
+
+I combined the newly made vectors _cropexp_ and _propexp_ to _a1_
+
+```{r echo=TRUE,cache=TRUE}
+a1<-cbind(a1,propexp,cropexp)
+```
+
+I made two new columns in _a1_ called _propdamage_ and _cropdamage_ which multiplied _PROPDMG_ and _CROPDMG_ to its corresponding exponents _propexp_ and _cropexp_
+
+```{r echo=TRUE,cache=TRUE}
+a1$propdamage<-a1$PROPDMG*a1$propexp
+a1$cropdamage<-a1$CROPDMG*a1$cropexp
+```
+
+Then i made two datasets called _propertydmg_ and _cropdmg_ which from _a1_ and then selected only positive values and then grouped the entries with same _EVNAME_ and then added their values to create one single entry and then sorted their values in descending order just like in question 1.
+
+```{r echo=TRUE,cache=TRUE}
+propertydmg<-summarise(group_by(a1,EVTYPE,propdamage))
+propertydmg<-propertydmg[propertydmg$propdamage>0,]
+propertydmg<-summarise(group_by(propertydmg,EVTYPE),propdamage=sum(propdamage))
+propertydmg<-propertydmg[order(propertydmg$propdamage,decreasing = TRUE),]
+cropdmg<-summarise(group_by(a1,EVTYPE,cropdamage))
+cropdmg<-cropdmg[cropdmg$cropdamage>0,]
+cropdmg<-summarise(group_by(cropdmg,EVTYPE),cropdamage=sum(cropdamage))
+cropdmg<-cropdmg[order(cropdmg$cropdamage,decreasing = TRUE),]
+```
+
+Finally I merged the data sets _propertydmg_ and _cropdmg_ into a new dataset called _combinedecodamage_ and then added a new column to _combinedecodamage_ called _total_ which simply adds the property and crop damage costs of the two data sets, _cropdmg_ and _propertydmg_.Finally I sorted the _combinedecodamage_ according to its _total_ values in descending order.
+
+```{r echo=TRUE,cache=TRUE}
+combinedecodamage<-merge(propertydmg,cropdmg,by="EVTYPE")
+combinedecodamage$total<-combinedecodamage$propdamage+combinedecodamage$cropdamage
+combinedecodamage<-combinedecodamage[order(combinedecodamage$total,decreasing = TRUE),]
+```
+
+## **Results**
+
+The following plot demonstrates that **tornados** are the most harmful weather event to population health:
+
+```{r echo=TRUE,cache=TRUE}
+ggplot(combineddata[1:10,],aes(x=reorder(EVTYPE, -total),y=total))+geom_bar(stat="identity",fill="red")+theme(text = element_text(size=10),axis.text.x = element_text(angle=45, hjust=1))+ggtitle("Impact of weather events on population health")+labs(x="Weather Event",y="Fatalities+Injuries")
+
+```
+
+The following plot demonstrates that **floods** have the greatest economic consequences:
+
+```{r echo=TRUE,cache=TRUE}
+ggplot(combinedecodamage[1:10,],aes(x=reorder(EVTYPE, -total),y=total))+geom_bar(stat="identity",fill="red")+theme(text = element_text(size=10),axis.text.x = element_text(angle=45, hjust=1))+ggtitle("Impact of weather events on properties and crops")+labs(x="Weather Event",y="Property+Cropa damage")
+
+```
+
+## **Conclusion**
+
+1) _Tornados_ have caused maximum harm to population health. 
+2) _Floods_ have caused the most significant economic damage.
+
+So, the government should allocate resources for weather disaster management accordingly.
+
